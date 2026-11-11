@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trader Ledger</title>
+<meta name="theme-color" content="#0d0d0d">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#faf8f2;--card:#fff;--tx:#1a1a1a;--mu:#6b6558;--gold:#8f6b00;--ln:#e6e0d0;--red:#b3261e;--grn:#1b7a3a;--btn:#1a1a1a;--btnt:#f5d77a;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d0d0d;--card:#1a1a18;--tx:#f2efe6;--mu:#a29b88;--gold:#d4af37;--ln:#2e2b22;--red:#ff8a80;--grn:#7fd99a;--btn:#d4af37;--btnt:#111;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0d0d0d;--card:#1a1a18;--tx:#f2efe6;--mu:#a29b88;--gold:#d4af37;--ln:#2e2b22;--red:#ff8a80;--grn:#7fd99a;--btn:#d4af37;--btnt:#111;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:14px 14px 40px}
+h1{font:600 26px/1.2 Georgia,serif;margin:4px 0 14px}
+h2{font:600 17px/1.3 Georgia,serif;margin:20px 0 8px;color:var(--gold)}
+.card{display:block;width:100%;text-align:left;color:inherit;background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:12px 14px;margin:0 0 10px;font:inherit}
+.card span{display:block;color:var(--mu);font-size:13px}
+.card b{font:600 22px Georgia,serif}
+.big{border-color:var(--gold)}
+.big b{font-size:32px;color:var(--gold)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.row2 .card{margin:0}
+.g{color:var(--grn)!important}.r,.bad{color:var(--red)!important}
+.mu{color:var(--mu);font-size:14px}
+label{display:block;font-size:14px;color:var(--mu);margin:0 0 12px}
+input,textarea{width:100%;margin-top:4px;padding:11px 12px;font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--ln);border-radius:10px}
+input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+button{font:inherit;cursor:pointer}
+.btn{width:100%;padding:15px;border:0;border-radius:12px;background:var(--btn);color:var(--btnt);font-weight:700;font-size:18px;margin:8px 0}
+.sm{padding:6px 10px;border:1px solid var(--gold);border-radius:9px;background:transparent;color:var(--gold);font-size:13px;white-space:nowrap}
+.x{border:0;background:transparent;color:var(--red);font-size:16px;padding:4px 8px}
+.bk{border:0;background:transparent;color:var(--gold);font-size:16px;padding:6px 0}
+.opt{display:flex;gap:10px;margin:0 0 12px}
+.opt label{flex:1;display:flex;align-items:center;margin:0;padding:11px;border:1px solid var(--ln);border-radius:10px;color:var(--tx);background:var(--card)}
+input[type=radio]{width:auto;margin:0 8px 0 0}
+.sc{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;color:var(--mu);font-weight:500;padding:6px 4px;border-bottom:1px solid var(--ln)}
+td{padding:9px 4px;border-bottom:1px solid var(--ln);vertical-align:middle}
+.rt{text-align:right;white-space:nowrap}
+textarea{height:120px;font-size:12px}
+</style>
+</head>
+<body>
+<div id="v"></div>
+<script>
+(function(){
+var K='trader_ledger_v2',V='home',S={open:0,bills:[],loans:[],uds:[],pays:[],exps:[]};
+function load(){try{var r=localStorage.getItem(K);if(r){var o=JSON.parse(r);if(o&&o.bills&&o.pays)S=Object.assign(S,o)}}catch(e){}}
+function save(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}}
+var $=function(s){return document.querySelector(s)};
+var inr=function(n){return (n<0?'-':'')+'₹'+Math.abs(Math.round(n)).toLocaleString('en-IN')};
+var ymd=function(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+var today=function(){return ymd(new Date())};
+var fmt=function(d){var p=d.split('-');return p[2]+'/'+p[1]+'/'+p[0].slice(2)};
+var esc=function(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+var num=function(id){return parseFloat($(id).value)||0};
+var radio=function(n){return $('input[name="'+n+'"]:checked').value};
+
+/* Pending amounts: payments settle the oldest entries of that name first */
+function calc(role){
+  var E=[],ex={},T={};
+  S.bills.forEach(function(b){
+    if(role=='p'&&b.bc!='1')E.push({t:'bill',id:b.id,date:b.date,name:b.from,amt:b.price*b.pcs});
+    if(role=='c'&&b.sc!='1')E.push({t:'bill',id:b.id,date:b.date,name:b.to,amt:b.sell*b.pcs});
+  });
+  (role=='p'?S.loans:S.uds).forEach(function(x){E.push({t:role=='p'?'loan':'ud',id:x.id,date:x.date,name:x.name,amt:x.amt})});
+  S.pays.forEach(function(p){if(p.role==role)ex[p.name]=(ex[p.name]||0)+p.amt});
+  E.sort(function(a,b){return a.date<b.date?-1:a.date>b.date?1:a.id-b.id});
+  E.forEach(function(e){var a=Math.min(ex[e.name]||0,e.amt);ex[e.name]=(ex[e.name]||0)-a;e.left=e.amt-a;T[e.name]=(T[e.name]||0)+e.left});
+  Object.keys(ex).forEach(function(n){if(ex[n]>0)T[n]=(T[n]||0)-ex[n]});
+  var tot=Object.keys(T).filter(function(n){return Math.round(T[n])!=0}).map(function(n){return {name:n,bal:T[n]}}).sort(function(a,b){return b.bal-a.bal});
+  return {list:E.filter(function(e){return e.left>0}),tot:tot,sum:tot.reduce(function(a,x){return a+x.bal},0)};
+}
+function st(){
+  var g=0,mg=0,be=0,mbe=0,ae=0,mo=today().slice(0,7);
+  S.bills.forEach(function(b){var p=(b.sell-b.price)*b.pcs;g+=p;if(b.date.slice(0,7)==mo)mg+=p});
+  S.exps.forEach(function(e){ae+=e.amt;if(e.type=='b'){be+=e.amt;if(e.date.slice(0,7)==mo)mbe+=e.amt}});
+  var P=calc('p'),C=calc('c'),bal=S.open+g;
+  return {bal:bal,full:g-be,month:mg-mbe,loan:P.sum,ud:C.sum,exp:ae,cash:bal-C.sum+P.sum-ae};
+}
+
+/* helpers for screens */
+function tbl(h,r,ni){
+  return '<div class="sc"><table><tr>'+h.map(function(x,i){return '<th'+(i==ni?' class="rt"':'')+'>'+x+'</th>'}).join('')+'</tr>'+
+  (r.length?r.map(function(x){return '<tr>'+x.map(function(c,i){return '<td'+(i==ni?' class="rt"':'')+'>'+c+'</td>'}).join('')+'</tr>'}).join(''):'<tr><td colspan="'+h.length+'" class="mu">Abhi koi entry nahi.</td></tr>')+'</table></div>';
+}
+function top(t,to){return '<button class="bk" data-go="'+(to||'home')+'">‹ Back</button><h1>'+t+'</h1>'}
+function kv(l,v,c){return '<div class="card"><span>'+l+'</span><b'+(c?' class="'+c+'"':'')+'>'+inr(v)+'</b></div>'}
+function tile(g,l,v,c){return '<button class="card '+(c||'')+'" data-go="'+g+'"><span>'+l+'</span><b>'+inr(v)+'</b></button>'}
+function fld(id,l,a){return '<label>'+l+'<input id="'+id+'" '+a+'></label>'}
+function radios(n,a,b,va,vb){return '<div class="opt"><label><input type="radio" name="'+n+'" value="'+va+'" checked>'+a+'</label><label><input type="radio" name="'+n+'" value="'+vb+'">'+b+'</label></div>'}
+function delb(k,id){return '<button class="x" data-del="'+k+'" data-id="'+id+'">✕</button>'}
+var N='type="number" inputmode="decimal" min="0" step="any"';
+function names(role){
+  var s={};
+  S.bills.forEach(function(b){var n=role=='p'?b.from:b.to;if(n)s[n]=1});
+  (role=='p'?S.loans:S.uds).forEach(function(x){s[x.name]=1});
+  return '<datalist id="dl'+role+'">'+Object.keys(s).map(function(n){return '<option value="'+esc(n)+'">'}).join('')+'</datalist>';
+}
+
+var VIEWS={
+home:function(){
+  var s=st();
+  return '<h1>Trader Ledger</h1>'+tile('bal','Current Balance',s.bal,'big')+
+  '<div class="row2">'+tile('pay','To Pay (Loan)',s.loan)+tile('col','Udhari (To Collect)',s.ud)+'</div>'+
+  '<div class="row2">'+tile('mon','Monthly Profit',s.month)+tile('exp','Expense List',s.exp)+'</div>'+
+  '<button class="btn" data-go="add">ADD</button>';
+},
+bal:function(){
+  var s=st();
+  return top('Current Balance')+kv('Balance',s.bal)+kv('Total udhari balance',s.ud,'g')+kv('Loan balance',s.loan,'r')+kv('Full profit balance',s.full)+
+  '<div class="card big"><span>Cash in hand</span><b>'+inr(s.cash)+'</b></div>'+
+  '<p class="mu">Cash in hand = Balance - Udhari + Loan - Expenses.<br>Balance = Opening balance ('+inr(S.open)+') + sab deals ka profit.</p>'+
+  '<button class="sm" data-act="open">Opening balance badlo</button>';
+},
+pay:function(){return plist('p')},
+col:function(){return plist('c')},
+mon:function(){
+  var mo=today().slice(0,7),R=[],t=0;
+  S.bills.forEach(function(b){if(b.date.slice(0,7)==mo)R.push({d:b.date,id:b.id,k:'bill',p:esc(b.prod),n:esc(b.to),v:(b.sell-b.price)*b.pcs})});
+  S.exps.forEach(function(e){if(e.type=='b'&&e.date.slice(0,7)==mo)R.push({d:e.date,id:e.id,k:'exp',p:'Expense: '+esc(e.for),n:'-',v:-e.amt})});
+  R.sort(function(a,b){return a.d<b.d?-1:a.d>b.d?1:a.id-b.id});
+  R.forEach(function(x){t+=x.v});
+  return top('Monthly Profit')+kv('Balance (is mahine ka)',t,t<0?'r':'g')+
+  tbl(['Sr','Date','Product','Name','Profit',''],R.map(function(x,i){return [i+1,fmt(x.d),x.p,x.n,'<span class="'+(x.v<0?'r':'g')+'">'+inr(x.v)+'</span>',delb(x.k,x.id)]}),4);
+},
+exp:function(){
+  var all=S.exps.slice().sort(function(a,b){return a.date<b.date?-1:a.date>b.date?1:a.id-b.id}),tot=0;
+  all.forEach(function(e){tot+=e.amt});
+  function part(ty){return tbl(['Sr','Date','For','Amount',''],all.filter(function(e){return e.type==ty}).map(function(e,i){return [i+1,fmt(e.date),esc(e.for),inr(e.amt),delb('exp',e.id)]}),3)}
+  return top('Expense List')+kv('Balance',tot,'r')+'<h2>Business expenses</h2>'+part('b')+'<h2>Personal expenses</h2>'+part('p');
+},
+add:function(){
+  return top('ADD')+'<button class="btn" data-go="bill">Purchasing &amp; Selling Bill</button>'+
+  '<button class="btn" data-go="loan">Loan (To Pay)</button><button class="btn" data-go="ud">Udhari (To Collect)</button>'+
+  '<button class="btn" data-go="ex">Expenses</button><p><button class="sm" data-go="bk">Backup / Restore</button></p>';
+},
+bill:function(){
+  return top('Purchasing &amp; Selling Bill','add')+names('p')+names('c')+
+  fld('b_date','Date','type="date" value="'+today()+'"')+fld('b_prod','Product name','placeholder="Jaise: Massager"')+
+  '<h2>Purchase</h2>'+fld('b_from','Purchase from','list="dlp" placeholder="Jaise: Rahul"')+fld('b_price','Price (per pc)',N)+fld('b_pcs','Pcs',N)+
+  '<div class="card"><span>Purchasing total amount</span><b id="b_pt">₹0</b></div>'+radios('bc','Cash','Udhari','1','0')+
+  '<p class="mu">Udhari tick kiya to Loan (To Pay) me apne aap add hoga.</p>'+
+  '<h2>Sell</h2>'+fld('b_to','Sell to','list="dlc" placeholder="Jaise: Salman"')+fld('b_sell','Sell at (per pc)',N)+
+  '<div class="card"><span>Pcs (upar se automatic): <b id="b_sp" style="font-size:16px">0</b></span><span>Selling total amount</span><b id="b_st">₹0</b></div>'+radios('sc','Cash','Udhari','1','0')+
+  '<p class="mu">Udhari tick kiya to Udhari (To Collect) me apne aap add hoga.</p>'+
+  '<div class="card big"><span>Profit (automatic)</span><b id="b_pf">₹0</b></div>'+
+  '<h2>Expense (optional)</h2>'+fld('b_en','Expense ka naam','placeholder="Jaise: Hamali"')+fld('b_ea','Expense amount',N)+
+  '<button class="btn" data-act="sbill">Save bill</button><p class="bad" id="msg"></p>';
+},
+loan:function(){return simple('Loan (To Pay)','p','sloan')},
+ud:function(){return simple('Udhari (To Collect)','c','sud')},
+ex:function(){
+  return top('Expenses','add')+fld('e_date','Date','type="date" value="'+today()+'"')+fld('e_for','Kis liye','placeholder="Jaise: Hamali"')+fld('e_amt','Amount',N)+
+  radios('et','Business expense','Personal expense','b','p')+
+  '<p class="mu">Business expense monthly profit me se minus hota hai. Personal sirf alag list me dikhta hai.</p>'+
+  '<button class="btn" data-act="sex">Save expense</button><p class="bad" id="msg"></p>';
+},
+bk:function(){
+  return top('Backup / Restore','add')+'<p class="mu">Data sirf is phone ke browser me hai. Backup copy karke WhatsApp ya Notes me save karo.</p>'+
+  '<textarea id="bk" placeholder="Backup yahan dikhega. Restore ke liye yahan paste karo."></textarea>'+
+  '<button class="btn" data-act="bkshow">Backup dikhao aur copy karo</button><button class="sm" data-act="bkrest">Restore karo</button><p class="mu" id="msg"></p>';
+}
+};
+function plist(role){
+  var c=calc(role),pb=role=='p'?'Paisa diya':'Paisa mila',old={};
+  c.list.forEach(function(e){if(!old[e.name])old[e.name]=e.date});
+  var pays=S.pays.filter(function(p){return p.role==role}).sort(function(a,b){return b.id-a.id});
+  var H=['Sr','Date','Name','Amount',''];
+  return top(role=='p'?'To Pay (Loan)':'Udhari (To Collect)')+kv('Balance',c.sum,role=='p'?'r':'g')+
+  '<h2>Total (naam wise)</h2>'+tbl(H,c.tot.map(function(x,i){return [i+1,old[x.name]?fmt(old[x.name]):'-',esc(x.name),inr(x.bal),'<button class="sm" data-pay="'+role+'" data-name="'+esc(x.name)+'">'+pb+'</button>']}),3)+
+  '<h2>Date wise entries</h2>'+tbl(H,c.list.map(function(e,i){return [i+1,fmt(e.date),esc(e.name),inr(e.left),delb(e.t,e.id)]}),3)+
+  (pays.length?'<h2>Payment history</h2>'+tbl(H,pays.map(function(p,i){return [i+1,fmt(p.date),esc(p.name),inr(p.amt),delb('pay',p.id)]}),3):'');
+}
+function simple(t,role,act){
+  return top(t,'add')+names(role)+fld('s_date','Date','type="date" value="'+today()+'"')+fld('s_name','Name','list="dl'+role+'"')+fld('s_amt','Amount',N)+
+  '<button class="btn" data-act="'+act+'">Save</button><p class="bad" id="msg"></p>';
+}
+function prev(){
+  var p=num('#b_price'),q=num('#b_pcs'),s=num('#b_sell');
+  $('#b_pt').textContent=inr(p*q);$('#b_sp').textContent=q;$('#b_st').textContent=inr(s*q);
+  var pf=(s-p)*q,el=$('#b_pf');el.textContent=inr(pf);el.className=pf<0?'r':'g';
+}
+function err(m){var e=$('#msg');e.textContent=m;e.className='bad'}
+
+var ACT={
+sbill:function(){
+  var b={id:Date.now(),date:$('#b_date').value||today(),prod:$('#b_prod').value.trim(),from:$('#b_from').value.trim(),price:num('#b_price'),pcs:num('#b_pcs'),bc:radio('bc'),to:$('#b_to').value.trim(),sell:num('#b_sell'),sc:radio('sc')};
+  if(!b.prod)return err('Product ka naam daalo.');
+  if(!b.from)return err('Purchase from ka naam daalo.');
+  if(b.price<=0)return err('Purchase price daalo.');
+  if(b.pcs<=0)return err('Pcs daalo.');
+  if(!b.to)return err('Sell to ka naam daalo.');
+  if(b.sell<=0)return err('Sell price daalo.');
+  S.bills.push(b);
+  var ea=num('#b_ea');
+  if(ea>0)S.exps.push({id:b.id+1,date:b.date,for:$('#b_en').value.trim()||'Bill expense',amt:ea,type:'b',bid:b.id});
+  save();go('home');
+},
+sloan:function(){addSimple('loans')},
+sud:function(){addSimple('uds')},
+sex:function(){
+  var e={id:Date.now(),date:$('#e_date').value||today(),for:$('#e_for').value.trim(),amt:num('#e_amt'),type:radio('et')};
+  if(!e.for)return err('Kis liye expense hai, likho.');
+  if(e.amt<=0)return err('Amount daalo.');
+  S.exps.push(e);save();go('home');
+},
+open:function(){
+  var a=prompt('Opening balance (shuru ka paisa) ₹',S.open);
+  if(a===null)return;S.open=parseFloat(a)||0;save();render();
+},
+bkshow:function(){
+  var ta=$('#bk');ta.value=JSON.stringify(S);ta.select();
+  var ok=false;try{ok=document.execCommand('copy')}catch(x){}
+  $('#msg').textContent=ok?'Copy ho gaya. Ab kahin paste karke save karo.':'Upar wala text select karke copy karo.';
+},
+bkrest:function(){
+  try{var o=JSON.parse($('#bk').value);
+    if(!o||!Array.isArray(o.bills)||!Array.isArray(o.pays))throw 0;
+    if(confirm('Purana data replace ho jayega. Continue?')){S=Object.assign({open:0,bills:[],loans:[],uds:[],pays:[],exps:[]},o);save();go('home')}
+  }catch(x){$('#msg').textContent='Backup text sahi nahi hai.'}
+}
+};
+function addSimple(k){
+  var x={id:Date.now(),date:$('#s_date').value||today(),name:$('#s_name').value.trim(),amt:num('#s_amt')};
+  if(!x.name)return err('Naam daalo.');
+  if(x.amt<=0)return err('Amount daalo.');
+  S[k].push(x);save();go('home');
+}
+function del(k,id){
+  var f=function(a){return a.filter(function(x){return String(x.id)!=id})};
+  if(!confirm(k=='bill'?'Ye bill delete karna hai? Isse jura expense bhi hat jayega.':'Ye entry delete karni hai?'))return;
+  if(k=='bill'){S.bills=f(S.bills);S.exps=S.exps.filter(function(e){return String(e.bid)!=id})}
+  else if(k=='loan')S.loans=f(S.loans);
+  else if(k=='ud')S.uds=f(S.uds);
+  else if(k=='pay')S.pays=f(S.pays);
+  else if(k=='exp')S.exps=f(S.exps);
+  save();render();
+}
+
+function go(v){if(location.hash=='#'+v)render();else location.hash=v}
+function render(){
+  V=(location.hash||'#home').slice(1);if(!VIEWS[V])V='home';
+  $('#v').innerHTML=VIEWS[V]();
+  if(V=='bill')prev();
+  window.scrollTo(0,0);
+}
+window.addEventListener('hashchange',render);
+document.addEventListener('input',function(){if(V=='bill')prev()});
+document.addEventListener('click',function(e){
+  var t=e.target.closest('button');if(!t)return;var d=t.dataset;
+  if(d.go){go(d.go);return}
+  if(d.act){ACT[d.act]();return}
+  if(d.del){del(d.del,d.id);return}
+  if(d.pay){
+    var a=parseFloat(prompt((d.pay=='p'?'Kitna paisa diya':'Kitna paisa mila')+' ('+d.name+')? ₹'));
+    if(!a||a<=0)return;
+    S.pays.push({id:Date.now(),date:today(),role:d.pay,name:d.name,amt:a});save();render();
+  }
+});
+load();render();
+if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){})}
+})();
+</script>
+</body>
+</html>
